@@ -1,0 +1,13 @@
+{
+  "name": "CareFlow",
+  "short_name": "CareFlow",
+  "description": "Simple care management for nursing homes and assisted living",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f7f4",
+  "theme_color": "#1D9E75",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
