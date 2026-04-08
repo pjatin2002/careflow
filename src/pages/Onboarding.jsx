@@ -9,7 +9,7 @@ export default function Onboarding({ user, onComplete }) {
     name: '', address: '', phone: '', license_number: '', facility_type: 'assisted_living',
   })
   const [profile, setProfile] = useState({
-    full_name: '', role: 'admin', phone: '',
+    full_name: '', phone: '',
   })
 
   const FACILITY_TYPES = [
@@ -28,35 +28,16 @@ export default function Onboarding({ user, onComplete }) {
     }
     setSaving(true)
     setError('')
-
     try {
-      const { data: facData, error: facError } = await supabase
-        .from('facilities')
-        .insert({
-          name: facility.name,
-          address: facility.address || null,
-          phone: facility.phone || null,
-          license_number: facility.license_number || null,
-          subscription_status: 'trial',
-        })
-        .select()
-        .single()
-
-      if (facError) throw new Error(facError.message)
-
-      const { error: profError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          facility_id: facData.id,
-          full_name: profile.full_name,
-          role: 'admin',
-          phone: profile.phone || null,
-          is_active: true,
-        })
-
-      if (profError) throw new Error(profError.message)
-
+      const { data, error: rpcError } = await supabase.rpc('create_facility_and_profile', {
+        facility_name: facility.name,
+        facility_address: facility.address || null,
+        facility_phone: facility.phone || null,
+        facility_license: facility.license_number || null,
+        admin_name: profile.full_name,
+        admin_phone: profile.phone || null,
+      })
+      if (rpcError) throw new Error(rpcError.message)
       onComplete()
     } catch (e) {
       setError(e.message)
@@ -72,18 +53,12 @@ export default function Onboarding({ user, onComplete }) {
           <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Welcome — let's set up your facility</div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', justifyContent: 'center' }}>
-          {[1, 2].map(s => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: step >= s ? 'var(--teal)' : 'var(--border)', color: step >= s ? '#fff' : 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600', transition: 'all .2s' }}>
-                {s}
-              </div>
-              <div style={{ fontSize: '12px', color: step >= s ? 'var(--text)' : 'var(--text2)', fontWeight: step === s ? '500' : '400' }}>
-                {s === 1 ? 'Facility info' : 'Your profile'}
-              </div>
-              {s < 2 && <div style={{ width: '32px', height: '1px', background: 'var(--border)', margin: '0 4px' }} />}
-            </div>
-          ))}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: step >= 1 ? 'var(--teal)' : 'var(--border)', color: step >= 1 ? '#fff' : 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600' }}>1</div>
+          <div style={{ fontSize: '12px', color: step === 1 ? 'var(--text)' : 'var(--text2)', fontWeight: step === 1 ? '500' : '400' }}>Facility info</div>
+          <div style={{ width: '32px', height: '1px', background: 'var(--border)' }} />
+          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: step >= 2 ? 'var(--teal)' : 'var(--border)', color: step >= 2 ? '#fff' : 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600' }}>2</div>
+          <div style={{ fontSize: '12px', color: step === 2 ? 'var(--text)' : 'var(--text2)', fontWeight: step === 2 ? '500' : '400' }}>Your profile</div>
         </div>
 
         <div className="panel">
@@ -104,7 +79,7 @@ export default function Onboarding({ user, onComplete }) {
                 <label className="form-label">Address</label>
                 <input className="form-input" placeholder="123 Main St, Youngstown, OH 44501" value={facility.address} onChange={e => setFacility({ ...facility, address: e.target.value })} />
               </div>
-              <div className="form-row" style={{ marginBottom: '12px' }}>
+              <div className="form-row" style={{ marginBottom: '16px' }}>
                 <div className="form-group">
                   <label className="form-label">Phone number</label>
                   <input className="form-input" placeholder="(330) 555-0100" value={facility.phone} onChange={e => setFacility({ ...facility, phone: e.target.value })} />
@@ -114,7 +89,12 @@ export default function Onboarding({ user, onComplete }) {
                   <input className="form-input" placeholder="OH-LTC-2024-001" value={facility.license_number} onChange={e => setFacility({ ...facility, license_number: e.target.value })} />
                 </div>
               </div>
-              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => { if (!facility.name) { setError('Facility name is required.'); return; } setError(''); setStep(2) }} disabled={!facility.name}>
+              {error && <div style={{ background: 'var(--red-light)', color: 'var(--red)', padding: '10px 12px', borderRadius: 'var(--radius)', fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => { if (!facility.name) { setError('Facility name is required.'); return } setError(''); setStep(2) }}
+              >
                 Continue →
               </button>
             </div>
@@ -124,7 +104,7 @@ export default function Onboarding({ user, onComplete }) {
             <div>
               <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Your administrator profile</div>
               <div style={{ background: 'var(--teal-light)', border: '.5px solid #5DCAA5', borderRadius: 'var(--radius)', padding: '10px 14px', fontSize: '13px', color: 'var(--teal-dark)', marginBottom: '16px' }}>
-                Setting up <strong>{facility.name}</strong> — you'll be the administrator. You can add staff members after setup.
+                Setting up <strong>{facility.name}</strong> — you will be the administrator.
               </div>
               <div className="form-group" style={{ marginBottom: '12px' }}>
                 <label className="form-label">Your full name *</label>
@@ -140,8 +120,13 @@ export default function Onboarding({ user, onComplete }) {
                 </div>
               )}
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-outline" onClick={() => setStep(1)}>← Back</button>
-                <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={createFacilityAndProfile} disabled={saving || !profile.full_name}>
+                <button className="btn btn-outline" onClick={() => { setError(''); setStep(1) }}>← Back</button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={createFacilityAndProfile}
+                  disabled={saving || !profile.full_name}
+                >
                   {saving ? 'Setting up your facility...' : 'Launch CareFlow →'}
                 </button>
               </div>
