@@ -12,6 +12,15 @@ const navItems = [
   { id: 'billing',     label: 'Billing & Plans',    icon: '💳', section: 'admin',   roles: ['admin'] },
 ]
 
+const mobileNav = [
+  { id: 'dashboard',   icon: '⊞', label: 'Home',     roles: ['admin','nurse','medication_aide','cna','social_worker'] },
+  { id: 'residents',   icon: '👤', label: 'Residents', roles: ['admin','nurse','social_worker'] },
+  { id: 'medications', icon: '💊', label: 'Meds',     roles: ['admin','nurse','medication_aide'] },
+  { id: 'dailylogs',   icon: '📋', label: 'Logs',     roles: ['admin','nurse','medication_aide','cna'] },
+  { id: 'incidents',   icon: '⚠️', label: 'Incidents', roles: ['admin','nurse','cna','medication_aide','social_worker'] },
+  { id: 'handoff',     icon: '🔄', label: 'Handoff',  roles: ['admin','nurse','medication_aide','cna'] },
+]
+
 const sections = ['overview', 'care', 'admin']
 
 const pageTitles = {
@@ -35,17 +44,13 @@ export default function Layout({ page, setPage, children, topbarTitle }) {
         </div>
         <nav className="nav">
           {sections.map(sec => {
-            const sectionItems = navItems.filter(n => n.section === sec && n.roles.includes(userRole))
-            if (!sectionItems.length) return null
+            const items = navItems.filter(n => n.section === sec && n.roles.includes(userRole))
+            if (!items.length) return null
             return (
               <div key={sec}>
                 <div className="nav-section">{sec}</div>
-                {sectionItems.map(n => (
-                  <div
-                    key={n.id}
-                    className={`nav-item${page === n.id ? ' active' : ''}`}
-                    onClick={() => setPage(n.id)}
-                  >
+                {items.map(n => (
+                  <div key={n.id} className={`nav-item${page === n.id ? ' active' : ''}`} onClick={() => setPage(n.id)}>
                     <span className="nav-icon">{n.icon}</span>
                     {n.label}
                   </div>
@@ -67,11 +72,7 @@ export default function Layout({ page, setPage, children, topbarTitle }) {
                 {userRole.replace('_', ' ')}
               </div>
             </div>
-            <button
-              onClick={signOut}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: '16px', padding: '2px' }}
-              title="Sign out"
-            >↩</button>
+            <button onClick={signOut} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: '16px', padding: '2px' }} title="Sign out">↩</button>
           </div>
         </div>
       </div>
@@ -81,12 +82,22 @@ export default function Layout({ page, setPage, children, topbarTitle }) {
           <div className="topbar-title">{topbarTitle || pageTitles[page]}</div>
           <div className="topbar-right">
             <span style={{ fontSize: '12px', color: 'var(--text2)' }}>{facilityName}</span>
-            <div className="avatar" style={{ background: 'var(--teal-light)', color: 'var(--teal-dark)', fontSize: '11px' }}>
-              {initials}
-            </div>
+            <div className="avatar" style={{ background: 'var(--teal-light)', color: 'var(--teal-dark)', fontSize: '11px' }}>{initials}</div>
           </div>
         </div>
         <div className="content">{children}</div>
+      </div>
+
+      <div className="mobile-nav">
+        {mobileNav
+          .filter(n => n.roles.includes(userRole))
+          .map(n => (
+            <div key={n.id} className={`mobile-nav-item${page === n.id ? ' active' : ''}`} onClick={() => setPage(n.id)}>
+              <span className="mob-icon">{n.icon}</span>
+              <span className="mob-label">{n.label}</span>
+            </div>
+          ))
+        }
       </div>
     </div>
   )
