@@ -1,24 +1,26 @@
-import { useState } from 'react'
-import { useResidents } from '../hooks/useResidents'
-import { supabase } from '../lib/supabase'
-import { useAuth } from '../hooks/useAuth'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase, auditLog } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth.jsx'
 
 const COLORS = [
-  { bg: '#E1F5EE', text: '#085041' }, { bg: '#E6F1FB', text: '#0C447C' },
-  { bg: '#EEEDFE', text: '#3C3489' }, { bg: '#FAEEDA', text: '#633806' },
-  { bg: '#EAF3DE', text: '#27500A' }, { bg: '#FCEBEB', text: '#791F1F' },
+  ['#E1F5EE','#085041'], ['#E6F1FB','#0C447C'], ['#EEEDFE','#3C3489'],
+  ['#FAEEDA','#633806'], ['#EAF3DE','#27500A'], ['#FCEBEB','#791F1F'],
 ]
 
 function initials(r) { return ((r.first_name?.[0] || '') + (r.last_name?.[0] || '')).toUpperCase() }
-function colorFor(id, idx) { return COLORS[idx % COLORS.length] }
 
 export default function Residents() {
   const { profile } = useAuth()
-  const { residents, loading, addResident, refetch } = useResidents()
+  const [residents, setResidents] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
-  const [showAdd, setShowAdd] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [showAdd, setShowAdd] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [carePlans, setCarePlans] = useState([])
+  const [meds, setMeds] = useState([])
+  const [logs, setLogs] = useState([])
   const [form, setForm] = useState({
     first_name: '', last_name: '', date_of_birth: '', room: '',
     admission_date: '', primary_diagnosis: '', secondary_diagnoses: '',
@@ -27,37 +29,56 @@ export default function Residents() {
     insurance_type: 'Medicaid', code_status: 'Full Code',
     diet: '', mobility: '', allergies: '', notes: '',
   })
-  const [saving, setSaving] = useState(false)
-  const [carePlans, setCarePlans] = useState([])
-  const [meds, setMeds] = useState([])
-  const [logs, setLogs] = useState([])
 
-  const filtered = residents.filter(r =>
-    `${r.first_name} ${r.last_name} ${r.room}`.toLowerCase().includes(search.toLowerCase())
-  )
+  const fetchResidents = useCallback(async () => {
+    if (!profile?.facility_id) return
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('residents')
+      .select('*')
+      .eq('facility_id', profile.facility_id)
+      .in('status', ['active', 'hospital'])
+      .order('last_name')
+    if (!error) setResidents(data || [])
+    setLoading(false)
+  }, [profile])
 
-  async function openResident(r) {
+  useEffect(() => {
+    if (profile?.facility_id) fetchResidents()
+  }, [profile, fetchResidents])
+
+  const openResident = async (r) => {
     setSelected(r)
     setActiveTab('overview')
     const [{ data: cp }, { data: m }, { data: l }] = await Promise.all([
       supabase.from('care_plans').select('*').eq('resident_id', r.id).eq('status', 'active'),
       supabase.from('medications').select('*').eq('resident_id', r.id).eq('is_active', true),
-      supabase.from('daily_logs').select('*').eq('resident_id', r.id).order('logged_at', { ascending: false }).limit(20),
+      supabase.from('daily_logs').select('*').eq('resident_id', r.id).order('logged_at', { ascending: false }).limit(10),
     ])
     setCarePlans(cp || [])
     setMeds(m || [])
     setLogs(l || [])
+    await auditLog('read', 'resident', r.id)
   }
 
-  async function handleAdd() {
+  const handleAdd = async () => {
+    if (!form.first_name || !form.last_name) return
     setSaving(true)
-    const { error } = await addResident(form)
-    setSaving(false)
+    const { data, error } = await supabase.from('residents').insert({
+      ...form, facility_id: profile.facility_id, status: 'active'
+    }).select().single()
     if (!error) {
+      await auditLog('create', 'resident', data.id, null, data)
+      fetchResidents()
       setShowAdd(false)
       setForm({ first_name: '', last_name: '', date_of_birth: '', room: '', admission_date: '', primary_diagnosis: '', secondary_diagnoses: '', physician: '', physician_phone: '', emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relation: '', insurance_type: 'Medicaid', code_status: 'Full Code', diet: '', mobility: '', allergies: '', notes: '' })
     }
+    setSaving(false)
   }
+
+  const filtered = residents.filter(r =>
+    `${r.first_name} ${r.last_name} ${r.room}`.toLowerCase().includes(search.toLowerCase())
+  )
 
   if (loading) return <div className="loading">Loading residents...</div>
 
@@ -68,7 +89,7 @@ export default function Residents() {
       </div>
       <div className="panel" style={{ marginBottom: '14px' }}>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-          <div className="avatar" style={{ width: '56px', height: '56px', fontSize: '18px', fontWeight: '700', background: colorFor(selected.id, residents.indexOf(selected)).bg, color: colorFor(selected.id, residents.indexOf(selected)).text, flexShrink: 0 }}>
+          <div className="avatar" style={{ width: '56px', height: '56px', fontSize: '18px', fontWeight: '700', background: COLORS[residents.indexOf(selected) % COLORS.length][0], color: COLORS[residents.indexOf(selected) % COLORS.length][1], flexShrink: 0 }}>
             {initials(selected)}
           </div>
           <div style={{ flex: 1 }}>
@@ -77,8 +98,8 @@ export default function Residents() {
               Room {selected.room} · DOB {selected.date_of_birth} · Admitted {selected.admission_date}
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              <span className="tag">{selected.primary_diagnosis}</span>
-              <span className="tag">{selected.physician}</span>
+              {selected.primary_diagnosis && <span className="tag">{selected.primary_diagnosis}</span>}
+              {selected.physician && <span className="tag">{selected.physician}</span>}
               <span className={`badge ${selected.status === 'active' ? 'green' : 'amber'}`}>{selected.status}</span>
               <span className="badge gray">{selected.code_status}</span>
             </div>
@@ -88,7 +109,7 @@ export default function Residents() {
       </div>
 
       <div className="tabs">
-        {['overview', 'medications', 'logs', 'incidents', 'care plan'].map(t => (
+        {['overview', 'medications', 'logs', 'care plan'].map(t => (
           <div key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </div>
@@ -97,56 +118,47 @@ export default function Residents() {
 
       {activeTab === 'overview' && (
         <div className="grid-2">
-          <div>
-            <div className="panel section-gap">
-              <div className="panel-title">Contact information</div>
-              <table className="table">
-                <tbody>
-                  <tr><td className="text-muted text-sm">Physician</td><td>{selected.physician} {selected.physician_phone && `· ${selected.physician_phone}`}</td></tr>
-                  <tr><td className="text-muted text-sm">Emergency contact</td><td>{selected.emergency_contact_name} ({selected.emergency_contact_relation}) {selected.emergency_contact_phone}</td></tr>
-                  <tr><td className="text-muted text-sm">Insurance</td><td>{selected.insurance_type}</td></tr>
-                  <tr><td className="text-muted text-sm">Allergies</td><td>{selected.allergies || 'NKDA'}</td></tr>
-                  <tr><td className="text-muted text-sm">Diet</td><td>{selected.diet || '—'}</td></tr>
-                  <tr><td className="text-muted text-sm">Mobility</td><td>{selected.mobility || '—'}</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <div className="panel">
+            <div className="panel-title">Contact & clinical info</div>
+            <table className="table">
+              <tbody>
+                <tr><td className="text-muted text-sm" style={{ width: '140px' }}>Physician</td><td>{selected.physician || '—'} {selected.physician_phone && `· ${selected.physician_phone}`}</td></tr>
+                <tr><td className="text-muted text-sm">Emergency contact</td><td>{selected.emergency_contact_name} ({selected.emergency_contact_relation}) {selected.emergency_contact_phone}</td></tr>
+                <tr><td className="text-muted text-sm">Insurance</td><td>{selected.insurance_type || '—'}</td></tr>
+                <tr><td className="text-muted text-sm">Allergies</td><td>{selected.allergies || 'NKDA'}</td></tr>
+                <tr><td className="text-muted text-sm">Diet</td><td>{selected.diet || '—'}</td></tr>
+                <tr><td className="text-muted text-sm">Mobility</td><td>{selected.mobility || '—'}</td></tr>
+                <tr><td className="text-muted text-sm">Code status</td><td>{selected.code_status}</td></tr>
+              </tbody>
+            </table>
           </div>
-          <div>
-            <div className="panel">
-              <div className="panel-title">Recent logs</div>
-              {logs.slice(0, 5).map(l => (
-                <div key={l.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '13px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="fw-500">{l.log_type}</span>
-                    <span className="text-muted text-sm">{new Date(l.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-                  <div className="text-muted text-sm">{l.notes}</div>
+          <div className="panel">
+            <div className="panel-title">Recent logs</div>
+            {logs.length === 0 && <div className="text-muted text-sm">No logs recorded yet.</div>}
+            {logs.slice(0, 6).map(l => (
+              <div key={l.id} style={{ padding: '8px 0', borderBottom: '.5px solid var(--border)', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>{l.log_type.replace('_', ' ')}</span>
+                  <span className="text-muted text-sm">{new Date(l.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-              ))}
-              {logs.length === 0 && <div className="text-muted text-sm">No logs today</div>}
-            </div>
+                {l.notes && <div className="text-muted text-sm">{l.notes}</div>}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
       {activeTab === 'medications' && (
         <div>
-          <div style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '14px' }}>Active medications — tap a slot to record administration</div>
+          <div style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '12px' }}>Active medications — go to Medications (eMAR) to record administration</div>
+          {meds.length === 0 && <div className="panel"><div className="text-muted">No active medications. Add via the Medications module.</div></div>}
           <div className="mar-grid">
-            {meds.length === 0 && <div className="text-muted">No active medications on file.</div>}
             {meds.map(m => (
-              <div className="mar-card" key={m.id}>
+              <div key={m.id} className="mar-card">
                 <div className="mar-drug">{m.drug_name}</div>
                 <div className="mar-dose">{m.dose} {m.route} {m.frequency}{m.prn ? ' (PRN)' : ''}</div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {(m.times || []).map((t, i) => (
-                    <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                      <div className="mar-slot pending">Pending</div>
-                      <div className="mar-slot-time">{t}</div>
-                    </div>
-                  ))}
-                </div>
+                {m.prescribing_physician && <div style={{ fontSize: '11px', color: 'var(--text2)' }}>Dr. {m.prescribing_physician}</div>}
+                {m.notes && <div style={{ fontSize: '11px', color: 'var(--text2)', fontStyle: 'italic', marginTop: '4px' }}>{m.notes}</div>}
               </div>
             ))}
           </div>
@@ -155,9 +167,9 @@ export default function Residents() {
 
       {activeTab === 'care plan' && (
         <div className="panel">
-          <div className="panel-title">Active care plan items<button className="btn btn-primary btn-sm">+ Add problem</button></div>
+          <div className="panel-title">Active care plan<button className="btn btn-primary btn-sm">+ Add problem</button></div>
           {carePlans.length === 0
-            ? <div className="text-muted">No care plan items. Click "+ Add problem" to start.</div>
+            ? <div className="text-muted">No care plan items yet.</div>
             : <table className="table">
               <thead><tr><th>Problem</th><th>Goal</th><th>Intervention</th><th>Frequency</th></tr></thead>
               <tbody>
@@ -184,15 +196,22 @@ export default function Residents() {
         <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Admit resident</button>
       </div>
 
+      {filtered.length === 0 && !loading && (
+        <div className="empty">
+          {search ? 'No residents match your search.' : 'No residents yet. Click "+ Admit resident" to add your first resident.'}
+        </div>
+      )}
+
       <div className="grid-3">
         {filtered.map((r, i) => {
-          const c = colorFor(r.id, i)
+          const [bg, tc] = COLORS[i % COLORS.length]
           return (
-            <div key={r.id} className="card" style={{ cursor: 'pointer', transition: 'border-color .15s' }} onClick={() => openResident(r)}
+            <div key={r.id} className="card" style={{ cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--teal)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              onClick={() => openResident(r)}
             >
-              <div className="avatar" style={{ width: '44px', height: '44px', fontSize: '15px', fontWeight: '700', background: c.bg, color: c.text, marginBottom: '10px' }}>
+              <div className="avatar" style={{ width: '44px', height: '44px', fontSize: '15px', fontWeight: '700', background: bg, color: tc, marginBottom: '10px' }}>
                 {initials(r)}
               </div>
               <div style={{ fontWeight: '500', marginBottom: '2px' }}>{r.first_name} {r.last_name}</div>
@@ -206,8 +225,6 @@ export default function Residents() {
           )
         })}
       </div>
-
-      {filtered.length === 0 && <div className="empty">No residents found.</div>}
 
       {showAdd && (
         <div className="modal-overlay">
@@ -223,7 +240,8 @@ export default function Residents() {
             </div>
             <div className="form-row" style={{ marginBottom: '12px' }}>
               <div className="form-group"><label className="form-label">Admission date</label><input className="form-input" type="date" value={form.admission_date} onChange={e => setForm({ ...form, admission_date: e.target.value })} /></div>
-              <div className="form-group"><label className="form-label">Code status</label>
+              <div className="form-group">
+                <label className="form-label">Code status</label>
                 <select className="form-select" value={form.code_status} onChange={e => setForm({ ...form, code_status: e.target.value })}>
                   {['Full Code', 'DNR', 'DNI', 'Comfort Care'].map(s => <option key={s}>{s}</option>)}
                 </select>
@@ -241,9 +259,17 @@ export default function Residents() {
               <div className="form-group"><label className="form-label">Emergency contact name</label><input className="form-input" value={form.emergency_contact_name} onChange={e => setForm({ ...form, emergency_contact_name: e.target.value })} /></div>
               <div className="form-group"><label className="form-label">Emergency contact phone</label><input className="form-input" value={form.emergency_contact_phone} onChange={e => setForm({ ...form, emergency_contact_phone: e.target.value })} /></div>
             </div>
-            <div className="form-group" style={{ marginBottom: '12px' }}>
-              <label className="form-label">Allergies</label>
-              <input className="form-input" placeholder="NKDA or list allergies" value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} />
+            <div className="form-row" style={{ marginBottom: '12px' }}>
+              <div className="form-group"><label className="form-label">Relationship</label><input className="form-input" placeholder="Daughter, Son, Spouse..." value={form.emergency_contact_relation} onChange={e => setForm({ ...form, emergency_contact_relation: e.target.value })} /></div>
+              <div className="form-group"><label className="form-label">Allergies</label><input className="form-input" placeholder="NKDA or list allergies" value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} /></div>
+            </div>
+            <div className="form-row" style={{ marginBottom: '14px' }}>
+              <div className="form-group"><label className="form-label">Diet</label><input className="form-input" placeholder="Regular, Pureed, Low sodium..." value={form.diet} onChange={e => setForm({ ...form, diet: e.target.value })} /></div>
+              <div className="form-group"><label className="form-label">Insurance type</label>
+                <select className="form-select" value={form.insurance_type} onChange={e => setForm({ ...form, insurance_type: e.target.value })}>
+                  {['Medicaid', 'Medicare', 'Private pay', 'Insurance', 'Dual eligible'].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-outline" onClick={() => setShowAdd(false)}>Cancel</button>
