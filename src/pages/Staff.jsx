@@ -112,7 +112,7 @@ export default function Staff() {
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span className="badge green">Active</span>
                 {expiring && <span className="badge amber">Cert expiring</span>}
-                {s.id !== profile.id && (
+                {s.id !== profile.id && profile.role === 'admin' && (
                   <button style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--red)', fontSize: '12px', cursor: 'pointer' }} onClick={() => deactivate(s.id)}>Remove</button>
                 )}
               </div>
