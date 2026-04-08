@@ -9,19 +9,15 @@ const navItems = [
   { id: 'handoff',     label: 'Shift Handoff',       icon: '🔄', section: 'care' },
   { id: 'staff',       label: 'Staff',               icon: '👥', section: 'admin' },
   { id: 'reports',     label: 'Reports',             icon: '📊', section: 'admin' },
+  { id: 'billing',     label: 'Billing & Plans',     icon: '💳', section: 'admin' },
 ]
 
 const sections = ['overview', 'care', 'admin']
 
 const pageTitles = {
-  dashboard: 'Dashboard',
-  residents: 'Residents',
-  medications: 'Medications (eMAR)',
-  dailylogs: 'Daily Logs',
-  incidents: 'Incidents',
-  handoff: 'Shift Handoff',
-  staff: 'Staff',
-  reports: 'Reports',
+  dashboard: 'Dashboard', residents: 'Residents', medications: 'Medications (eMAR)',
+  dailylogs: 'Daily Logs', incidents: 'Incidents', handoff: 'Shift Handoff',
+  staff: 'Staff', reports: 'Reports', billing: 'Billing & Plans',
 }
 
 export default function Layout({ page, setPage, children, topbarTitle }) {
@@ -62,13 +58,9 @@ export default function Layout({ page, setPage, children, topbarTitle }) {
               <div style={{ fontSize: '12px', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {profile?.full_name || 'User'}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text2)' }}>{profile?.role}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text2)', textTransform: 'capitalize' }}>{profile?.role}</div>
             </div>
-            <button
-              onClick={signOut}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: '16px', padding: '2px' }}
-              title="Sign out"
-            >↩</button>
+            <button onClick={signOut} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: '16px', padding: '2px' }} title="Sign out">↩</button>
           </div>
         </div>
       </div>
@@ -78,14 +70,10 @@ export default function Layout({ page, setPage, children, topbarTitle }) {
           <div className="topbar-title">{topbarTitle || pageTitles[page]}</div>
           <div className="topbar-right">
             <span style={{ fontSize: '12px', color: 'var(--text2)' }}>{facilityName}</span>
-            <div className="avatar" style={{ background: 'var(--teal-light)', color: 'var(--teal-dark)', fontSize: '11px' }}>
-              {initials}
-            </div>
+            <div className="avatar" style={{ background: 'var(--teal-light)', color: 'var(--teal-dark)', fontSize: '11px' }}>{initials}</div>
           </div>
         </div>
-        <div className="content">
-          {children}
-        </div>
+        <div className="content">{children}</div>
       </div>
     </div>
   )
